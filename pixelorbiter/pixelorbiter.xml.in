@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<compiz>
+	<plugin name="pixelorbiter" useBcop="true">
+		<_short>Pixel Orbiter</_short>
+		<_long>Pixel Orbiter</_long>
+		<category>Desktop</category>
+		<deps>
+			<relation type="after">
+				<plugin>composite</plugin>
+				<plugin>cube</plugin>
+				<plugin>decor</plugin>
+				<plugin>expo</plugin>
+				<plugin>ezoom</plugin>
+				<plugin>opengl</plugin>
+				<plugin>mousepoll</plugin>
+				<plugin>rotate</plugin>
+				<plugin>unityshell</plugin>
+				<plugin>vpswitch</plugin>
+				<plugin>wall</plugin>
+			</relation>
+			<requirement>
+				<plugin>opengl</plugin>
+				<plugin>mousepoll</plugin>
+			</requirement>
+		</deps>
+		<options>
+			<group>
+				<_short>General</_short>
+				<option name="interval" type="int">
+					<_short>Pixel movement interval</_short>
+					<_long>The interval (in ms) between one pixel shift and the next.</_long>
+					<default>60000</default>
+					<min>100</min>
+					<max>600000</max>
+				</option>
+			</group>
+		</options>
+	</plugin>
+</compiz>
