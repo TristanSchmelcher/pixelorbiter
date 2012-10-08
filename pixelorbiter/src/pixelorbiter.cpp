@@ -280,8 +280,6 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
 
     bool status = gScreen->glPaintOutput (attrib, transform, r, output, mask);
 
-    /* Temporarily set the viewport to fullscreen */
-    glViewport (0, 0, screen->width (), screen->height ());
     glEnable (GL_TEXTURE_RECTANGLE_ARB);
     glBindTexture (GL_TEXTURE_RECTANGLE_ARB, screenTexture);
     if (screen->width () != lastWidth || screen->height () != lastHeight)
@@ -301,20 +299,29 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
 		rect.width (), rect.height ());
 	}
     }
-    glMatrixMode (GL_PROJECTION);
+
+    GLMatrix sTransform = transform;
+    sTransform.toScreenSpace (output, -DEFAULT_Z_CAMERA);
     glPushMatrix ();
-    glLoadIdentity ();
-    glMatrixMode (GL_MODELVIEW);
-    glPushMatrix ();
-    glLoadIdentity ();
+    glLoadMatrixf (sTransform.getMatrix ());
+    // Left
     GLfloat t_x1 = 0.0 - offsetX;
+    // Right
     GLfloat t_x2 = screen->width () - offsetX;
+    // GL puts the origin for glCopyTexImage2D at the bottom-left, so the
+    // texture coordinates are inverted relative to the vertices.
+    // Bottom
     GLfloat t_y1 = 0.0 + offsetY;
+    // Top
     GLfloat t_y2 = screen->height () + offsetY;
-    GLfloat v_x1 = -1.0;
-    GLfloat v_x2 = 1.0;
-    GLfloat v_y1 = -1.0;
-    GLfloat v_y2 = 1.0;
+    // Left
+    GLfloat v_x1 = 0;
+    // Right
+    GLfloat v_x2 = screen->width ();
+    // Bottom
+    GLfloat v_y1 = screen->height ();
+    // Top
+    GLfloat v_y2 = 0;
     glEnable (GL_TEXTURE_RECTANGLE_ARB);
     glBindTexture (GL_TEXTURE_RECTANGLE_ARB, screenTexture);
     glEnable (GL_SCISSOR_TEST);
@@ -323,33 +330,23 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
 	glScissor (rect.x (), screen->height () - rect.y2 (),
 	    rect.width (), rect.height ());
 	glBegin (GL_QUADS);
-	glTexCoord2f (t_x1, t_y2);
+	glTexCoord2f (t_x1, t_y2);  // Top-left
 	glVertex2f (v_x1, v_y2);
-	glTexCoord2f (t_x1, t_y1);
+	glTexCoord2f (t_x1, t_y1);  // Bottom-left
 	glVertex2f (v_x1, v_y1);
-	glTexCoord2f (t_x2, t_y1);
+	glTexCoord2f (t_x2, t_y1);  // Bottom-right
 	glVertex2f (v_x2, v_y1);
-	glTexCoord2f (t_x2, t_y2);
+	glTexCoord2f (t_x2, t_y2);  // Top-right
 	glVertex2f (v_x2, v_y2);
 	glEnd ();
     }
     glDisable (GL_SCISSOR_TEST);
     glBindTexture (GL_TEXTURE_RECTANGLE_ARB, 0);
     glDisable (GL_TEXTURE_RECTANGLE_ARB);
-    glPopMatrix ();
-    glMatrixMode (GL_PROJECTION);
-    glPopMatrix ();
-    glMatrixMode (GL_MODELVIEW);
-
-    gScreen->setDefaultViewport ();
 
     if (haveCursor)
     {
 	// Draw the cursor.
-	GLMatrix sTransform = transform;
-	sTransform.toScreenSpace (output, -DEFAULT_Z_CAMERA);
-	glPushMatrix ();
-	glLoadMatrixf (sTransform.getMatrix ());
 	GLfloat t_x1 = 0.0;
 	GLfloat t_x2 = cursorWidth;
 	GLfloat t_y1 = cursorHeight;
@@ -374,12 +371,13 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
 	glDisable (GL_BLEND);
 	glBindTexture (GL_TEXTURE_RECTANGLE_ARB, 0);
 	glDisable (GL_TEXTURE_RECTANGLE_ARB);
-	glPopMatrix ();
     }
     else
     {
 	compLogMessage ("pixelorbiter", CompLogLevelWarn, "No cursor to draw!");
     }
+
+    glPopMatrix ();
 
     return status;
 }
