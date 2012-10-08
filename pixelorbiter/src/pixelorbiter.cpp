@@ -49,14 +49,14 @@ PixelOrbiterScreen::positionUpdate (const CompPoint &pos)
 	cScreen->damageScreen ();
     }
 
-    if (cursorPosY < offsetY)
+    if (cursorPosY < -offsetY)
     {
-	offsetY = cursorPosY;
+	offsetY = -cursorPosY;
 	cScreen->damageScreen ();
     }
-    else if (cursorPosY > (screen->height () - 1 + offsetY))
+    else if (cursorPosY > (screen->height () - 1 - offsetY))
     {
-	offsetY = -(screen->height () - 1 - cursorPosY);
+	offsetY = screen->height () - 1 - cursorPosY;
 	cScreen->damageScreen ();
     }
 }
@@ -71,7 +71,7 @@ PixelOrbiterScreen::damageCursor ()
 
     cScreen->damageRegionSetEnabled (this, false);
     cScreen->damageRegion (CompRect (
-	cursorPosX + offsetX - cursorHotX, cursorPosY - offsetY - cursorHotY,
+	cursorPosX + offsetX - cursorHotX, cursorPosY + offsetY - cursorHotY,
 	cursorWidth, cursorHeight));
     cScreen->damageRegionSetEnabled (this, true);
 }
@@ -94,12 +94,12 @@ PixelOrbiterScreen::orbit ()
     }
     bool phaseDone;
     switch (phase) {
-	case UP:
+	case DOWN:
 	case RIGHT:
 	    (*offset)++;
 	    phaseDone = *offset >= MAX_OFFSET;
 	    break;
-	case DOWN:
+	case UP:
 	case LEFT:
 	    (*offset)--;
 	    phaseDone = *offset <= -MAX_OFFSET;
@@ -185,12 +185,12 @@ void
 PixelOrbiterScreen::damageRegion (const CompRegion &region)
 {
     CompRegion r (region);
-    r.translate (offsetX, -offsetY);
+    r.translate (offsetX, offsetY);
 
     if (offsetX > 0)
     {
 	CompRegion leftBorder (r & CompRect(
-	    offsetX, -offsetY, 1, screen->height ()));
+	    offsetX, offsetY, 1, screen->height ()));
 	foreach (CompRect rect, leftBorder.rects ())
 	{
 	    rect.setX (0);
@@ -201,7 +201,7 @@ PixelOrbiterScreen::damageRegion (const CompRegion &region)
     else if (offsetX < 0)
     {
 	CompRegion rightBorder (r & CompRect(
-	    screen->width () - 1 + offsetX, -offsetY, 1, screen->height ()));
+	    screen->width () - 1 + offsetX, offsetY, 1, screen->height ()));
 	foreach (CompRect rect, rightBorder.rects ())
 	{
 	    rect.setX (screen->width () + offsetX);
@@ -212,50 +212,54 @@ PixelOrbiterScreen::damageRegion (const CompRegion &region)
 
     if (offsetY > 0)
     {
-	CompRegion bottomBorder (r & CompRect(
-	    offsetX, screen->height () - 1 - offsetY, screen->width (), 1));
-	foreach (CompRect rect, bottomBorder.rects ())
+	CompRegion topBorder (r & CompRect(
+	    offsetX, offsetY, screen->width (), 1));
+	foreach (CompRect rect, topBorder.rects ())
 	{
-	    rect.setY (screen->height () - offsetY);
+	    rect.setY (0);
 	    rect.setHeight (offsetY);
 	    r |= rect;
 	}
     }
     else if (offsetY < 0)
     {
-	CompRegion topBorder (r & CompRect(
-	    offsetX, -offsetY, screen->width (), 1));
-	foreach (CompRect rect, topBorder.rects ())
+	CompRegion bottomBorder (r & CompRect(
+	    offsetX, screen->height () - 1 + offsetY, screen->width (), 1));
+	foreach (CompRect rect, bottomBorder.rects ())
 	{
-	    rect.setY (0);
+	    rect.setY (screen->height () + offsetY);
 	    rect.setHeight (-offsetY);
 	    r |= rect;
 	}
     }
 
     if (offsetX > 0 && offsetY > 0 && r.contains (CompPoint (
-	offsetX, screen->height () - 1 - offsetY)))
+	offsetX, offsetY)))
     {
-	r |= CompRect (0, screen->height () - offsetY, offsetX, offsetY);
+	// Top-left corner.
+	r |= CompRect (0, 0, offsetX, offsetY);
     }
 
     if (offsetX > 0 && offsetY < 0 && r.contains (CompPoint (
-	offsetX, -offsetY)))
+	offsetX, screen->height () - 1 + offsetY)))
     {
-	r |= CompRect (0, 0, offsetX, -offsetY);
+	// Bottom-left corner.
+	r |= CompRect (0, screen->height () + offsetY, offsetX, -offsetY);
     }
 
     if (offsetX < 0 && offsetY > 0 && r.contains (CompPoint (
-	screen->width () - 1 + offsetX, screen->height () - 1 - offsetY)))
+	screen->width () - 1 + offsetX, offsetY)))
     {
-	r |= CompRect (screen->width () + offsetX, screen->height () - offsetY,
+	// Top-right corner.
+	r |= CompRect (screen->width () + offsetX, 0,
 	    -offsetX, offsetY);
     }
 
     if (offsetX < 0 && offsetY < 0 && r.contains (CompPoint (
-	screen->width () - 1 + offsetX, -offsetY)))
+	screen->width () - 1 + offsetX, screen->height () - 1 + offsetY)))
     {
-	r |= CompRect (screen->width () + offsetX, 0,
+	// Bottom-right corner.
+	r |= CompRect (screen->width () + offsetX, screen->height () + offsetY,
 	    -offsetX, -offsetY);
     }
 
@@ -271,7 +275,7 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
 				   unsigned int	             mask)
 {
     CompRegion r (region);
-    r.translate (-offsetX, offsetY);
+    r.translate (-offsetX, -offsetY);
     r &= screen->region ();
 
     bool status = gScreen->glPaintOutput (attrib, transform, r, output, mask);
@@ -305,8 +309,8 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
     glLoadIdentity ();
     GLfloat t_x1 = 0.0 - offsetX;
     GLfloat t_x2 = screen->width () - offsetX;
-    GLfloat t_y1 = 0.0 - offsetY;
-    GLfloat t_y2 = screen->height () - offsetY;
+    GLfloat t_y1 = 0.0 + offsetY;
+    GLfloat t_y2 = screen->height () + offsetY;
     GLfloat v_x1 = -1.0;
     GLfloat v_x2 = 1.0;
     GLfloat v_y1 = -1.0;
@@ -352,8 +356,8 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
 	GLfloat t_y2 = 0.0;
 	GLfloat v_x1 = cursorPosX + offsetX - cursorHotX;
 	GLfloat v_x2 = cursorPosX + offsetX - cursorHotX + cursorWidth;
-	GLfloat v_y1 = cursorPosY - offsetY - cursorHotY + cursorHeight;
-	GLfloat v_y2 = cursorPosY - offsetY - cursorHotY;
+	GLfloat v_y1 = cursorPosY + offsetY - cursorHotY + cursorHeight;
+	GLfloat v_y2 = cursorPosY + offsetY - cursorHotY;
 	glEnable (GL_TEXTURE_RECTANGLE_ARB);
 	glBindTexture (GL_TEXTURE_RECTANGLE_ARB, cursorTexture);
 	glEnable (GL_BLEND);
