@@ -267,6 +267,27 @@ PixelOrbiterScreen::damageRegion (const CompRegion &region)
     cScreen->damageRegion (r);
 }
 
+static void rectToPoints(const CompRect &quad, CompPoint points[4])
+{
+    points[0] = CompPoint (quad.x1 (), quad.y1 ());  // Top-left
+    points[1] = CompPoint (quad.x1 (), quad.y2 ());  // Bottom-left
+    points[2] = CompPoint (quad.x2 (), quad.y2 ());  // Bottom-right
+    points[3] = CompPoint (quad.x2 (), quad.y1 ());  // Top-right
+}
+
+static void emitTexturedQuad (const CompRect &screenQuad,
+			      const CompRect &texQuad)
+{
+    CompPoint vertices[4];
+    CompPoint texCoords[4];
+    rectToPoints (screenQuad, vertices);
+    rectToPoints (texQuad, texCoords);
+    for (int i = 0; i < 4; i++) {
+	glTexCoord2i (texCoords[i].x (), texCoords[i].y ());
+	glVertex2i (vertices[i].x (), vertices[i].y ());
+    }
+}
+
 bool
 PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
 				   const GLMatrix	     &transform,
@@ -304,69 +325,35 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
     sTransform.toScreenSpace (output, -DEFAULT_Z_CAMERA);
     glPushMatrix ();
     glLoadMatrixf (sTransform.getMatrix ());
-    // Left
-    GLfloat t_x1 = 0.0 - offsetX;
-    // Right
-    GLfloat t_x2 = screen->width () - offsetX;
-    // GL puts the origin for glCopyTexImage2D at the bottom-left, so the
-    // texture coordinates are inverted relative to the vertices.
-    // Bottom
-    GLfloat t_y1 = 0.0 + offsetY;
-    // Top
-    GLfloat t_y2 = screen->height () + offsetY;
-    // Left
-    GLfloat v_x1 = 0;
-    // Right
-    GLfloat v_x2 = screen->width ();
-    // Bottom
-    GLfloat v_y1 = screen->height ();
-    // Top
-    GLfloat v_y2 = 0;
     glEnable (GL_TEXTURE_RECTANGLE_ARB);
     glBindTexture (GL_TEXTURE_RECTANGLE_ARB, screenTexture);
-    glEnable (GL_SCISSOR_TEST);
+    glBegin (GL_QUADS);
     foreach (CompRect rect, region.rects ())
     {
-	glScissor (rect.x (), screen->height () - rect.y2 (),
-	    rect.width (), rect.height ());
-	glBegin (GL_QUADS);
-	glTexCoord2f (t_x1, t_y2);  // Top-left
-	glVertex2f (v_x1, v_y2);
-	glTexCoord2f (t_x1, t_y1);  // Bottom-left
-	glVertex2f (v_x1, v_y1);
-	glTexCoord2f (t_x2, t_y1);  // Bottom-right
-	glVertex2f (v_x2, v_y1);
-	glTexCoord2f (t_x2, t_y2);  // Top-right
-	glVertex2f (v_x2, v_y2);
-	glEnd ();
+	// GL puts the origin for glCopyTexImage2D at the bottom-left, so the
+	// texture Y-coordinates are inverted.
+	emitTexturedQuad (rect, CompRect (
+	    -offsetX + rect.x (), screen->height () + offsetY - rect.y (),
+	    rect.width (), -rect.height ()));
     }
-    glDisable (GL_SCISSOR_TEST);
+    glEnd ();
     glBindTexture (GL_TEXTURE_RECTANGLE_ARB, 0);
     glDisable (GL_TEXTURE_RECTANGLE_ARB);
 
     if (haveCursor)
     {
 	// Draw the cursor.
-	GLfloat t_x1 = 0.0;
-	GLfloat t_x2 = cursorWidth;
-	GLfloat t_y1 = cursorHeight;
-	GLfloat t_y2 = 0.0;
-	GLfloat v_x1 = cursorPosX + offsetX - cursorHotX;
-	GLfloat v_x2 = cursorPosX + offsetX - cursorHotX + cursorWidth;
-	GLfloat v_y1 = cursorPosY + offsetY - cursorHotY + cursorHeight;
-	GLfloat v_y2 = cursorPosY + offsetY - cursorHotY;
 	glEnable (GL_TEXTURE_RECTANGLE_ARB);
 	glBindTexture (GL_TEXTURE_RECTANGLE_ARB, cursorTexture);
 	glEnable (GL_BLEND);
 	glBegin (GL_QUADS);
-	glTexCoord2f (t_x1, t_y2);
-	glVertex2f (v_x1, v_y2);
-	glTexCoord2f (t_x1, t_y1);
-	glVertex2f (v_x1, v_y1);
-	glTexCoord2f (t_x2, t_y1);
-	glVertex2f (v_x2, v_y1);
-	glTexCoord2f (t_x2, t_y2);
-	glVertex2f (v_x2, v_y2);
+	emitTexturedQuad (
+	    CompRect (
+		cursorPosX + offsetX - cursorHotX,
+		cursorPosY + offsetY - cursorHotY,
+		cursorWidth,
+		cursorHeight),
+	    CompRect (0, 0, cursorWidth, cursorHeight));
 	glEnd ();
 	glDisable (GL_BLEND);
 	glBindTexture (GL_TEXTURE_RECTANGLE_ARB, 0);
