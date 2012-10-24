@@ -369,15 +369,8 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
     return status;
 }
 
-void
-PixelOrbiterScreen::postLoad ()
-{
-    // TODO
-}
-
 PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
     PluginClassHandler <PixelOrbiterScreen, CompScreen> (s),
-    PluginStateWriter <PixelOrbiterScreen> (this, s->root ()),
     screen (s),
     cScreen (CompositeScreen::get (screen)),
     gScreen (GLScreen::get (screen)),
@@ -450,8 +443,6 @@ PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
 
 PixelOrbiterScreen::~PixelOrbiterScreen ()
 {
-    writeSerializedData ();
-
     timer.stop ();
 
     GLuint textures[2];

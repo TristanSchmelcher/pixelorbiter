@@ -22,7 +22,6 @@
 
 #include <composite/composite.h>
 #include <core/core.h>
-#include <core/serialization.h>
 #include <core/timer.h>
 #include <mousepoll/mousepoll.h>
 #include <opengl/opengl.h>
@@ -31,7 +30,6 @@
 
 class PixelOrbiterScreen :
     public PluginClassHandler <PixelOrbiterScreen, CompScreen>,
-    public PluginStateWriter <PixelOrbiterScreen>,
     public PixelorbiterOptions,
     public ScreenInterface,
     public CompositeScreenInterface,
@@ -40,15 +38,6 @@ class PixelOrbiterScreen :
     public:
 	PixelOrbiterScreen (CompScreen *screen);
 	~PixelOrbiterScreen ();
-	
-	template <class Archive>
-	void serialize (Archive &ar, const unsigned int version)
-	{
-	    // TODO
-	}
-	
-	void
-	postLoad ();
 
 	void
 	handleEvent (XEvent *event);
