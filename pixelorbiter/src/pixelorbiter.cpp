@@ -28,37 +28,34 @@ COMPIZ_PLUGIN_20090315 (pixelorbiter, PixelOrbiterPluginVTable);
 
 // TODO: Use options.
 #define TIMEOUT 60000
-#define MAX_OFFSET 10
+#define MAX_OFFSET 30
+
+void
+PixelOrbiterScreen::snapAxisOffsetToCursor (int *axisOffset, int axisSize,
+					    int axisCursorPos)
+{
+    if (axisCursorPos < -(*axisOffset))
+    {
+	*axisOffset = -axisCursorPos;
+	cScreen->damageScreen ();
+    }
+    else if (axisCursorPos > (axisSize - 1 - *axisOffset))
+    {
+	*axisOffset = axisSize - 1 - axisCursorPos;
+	cScreen->damageScreen ();
+    }
+}
+
 
 void
 PixelOrbiterScreen::positionUpdate (const CompPoint &pos)
 {
     damageCursor ();
-    cursorPosX = poller.getCurrentPosition ().x ();
-    cursorPosY = poller.getCurrentPosition ().y ();
+    cursorPos = poller.getCurrentPosition ();
     damageCursor ();
 
-    if (cursorPosX < -offsetX)
-    {
-	offsetX = -cursorPosX;
-	cScreen->damageScreen ();
-    }
-    else if (cursorPosX > (screen->width () - 1 - offsetX))
-    {
-	offsetX = screen->width () - 1 - cursorPosX;
-	cScreen->damageScreen ();
-    }
-
-    if (cursorPosY < -offsetY)
-    {
-	offsetY = -cursorPosY;
-	cScreen->damageScreen ();
-    }
-    else if (cursorPosY > (screen->height () - 1 - offsetY))
-    {
-	offsetY = screen->height () - 1 - cursorPosY;
-	cScreen->damageScreen ();
-    }
+    snapAxisOffsetToCursor (&offsetX, screen->width (), cursorPos.x ());
+    snapAxisOffsetToCursor (&offsetY, screen->height (), cursorPos.y ());
 }
 
 void
@@ -71,8 +68,10 @@ PixelOrbiterScreen::damageCursor ()
 
     cScreen->damageRegionSetEnabled (this, false);
     cScreen->damageRegion (CompRect (
-	cursorPosX + offsetX - cursorHotX, cursorPosY + offsetY - cursorHotY,
-	cursorWidth, cursorHeight));
+	cursorPos.x () + offsetX - cursorHotSpot.x (),
+	cursorPos.y () + offsetY - cursorHotSpot.y (),
+	cursorSize.width (),
+	cursorSize.height ()));
     cScreen->damageRegionSetEnabled (this, true);
 }
 
@@ -131,12 +130,13 @@ PixelOrbiterScreen::loadCursor ()
 	return;
     }
 
-    cursorWidth = image->width;
-    cursorHeight = image->height;
-    cursorHotX = image->xhot;
-    cursorHotY = image->yhot;
+    cursorSize.setWidth(image->width);
+    cursorSize.setHeight(image->height);
+    cursorHotSpot.setX(image->xhot);
+    cursorHotSpot.setY(image->yhot);
 
-    unsigned char *pixels = new unsigned char[cursorWidth * cursorHeight * 4];
+    unsigned char *pixels = new unsigned char[
+	cursorSize.width () * cursorSize.height () * 4];
     if (!pixels)
     {
 	compLogMessage ("pixelorbiter", CompLogLevelWarn, "OOM");
@@ -144,7 +144,7 @@ PixelOrbiterScreen::loadCursor ()
 	return;
     }
 
-    for (int i = 0; i < cursorWidth * cursorHeight; i++)
+    for (int i = 0; i < cursorSize.width () * cursorSize.height (); i++)
     {
 	unsigned long pix = image->pixels[i];
 	pixels[i * 4] = pix & 0xff;
@@ -158,8 +158,8 @@ PixelOrbiterScreen::loadCursor ()
     glEnable (GL_TEXTURE_RECTANGLE_ARB);
     glBindTexture (GL_TEXTURE_RECTANGLE_ARB, cursorTexture);
     // Default is linear filtering and clamp-to-edge, which is what we want.
-    glTexImage2D (GL_TEXTURE_RECTANGLE_ARB, 0, GL_RGBA, cursorWidth,
-		  cursorHeight, 0, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
+    glTexImage2D (GL_TEXTURE_RECTANGLE_ARB, 0, GL_RGBA, cursorSize.width (),
+		  cursorSize.height (), 0, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
     glBindTexture (GL_TEXTURE_RECTANGLE_ARB, 0);
     glDisable (GL_TEXTURE_RECTANGLE_ARB);
 
@@ -181,90 +181,136 @@ PixelOrbiterScreen::handleEvent (XEvent *event)
     screen->handleEvent (event);
 }
 
+static void
+expandVertBorderDamage (const CompRegion &translatedRegion,
+			CompRegion *expandedRegion,
+			int borderX,
+			int borderHeight,
+			int expansionX,
+			int expansionWidth)
+{
+    CompRegion border (translatedRegion & CompRect(
+	borderX, 0, 1, borderHeight));
+    foreach (CompRect rect, border.rects ())
+    {
+	rect.setX (expansionX);
+	rect.setWidth (expansionWidth);
+	*expandedRegion += rect;
+    }
+}
+
+static void
+expandHorizBorderDamage (const CompRegion &translatedRegion,
+			 CompRegion *expandedRegion,
+			 int borderY,
+			 int borderWidth,
+			 int expansionY,
+			 int expansionHeight)
+{
+    CompRegion border (translatedRegion & CompRect(
+	0, borderY, borderWidth, 1));
+    foreach (CompRect rect, border.rects ())
+    {
+	rect.setY (expansionY);
+	rect.setHeight (expansionHeight);
+	*expandedRegion += rect;
+    }
+}
+
+static void
+expandBorderDamage(const CompRegion &translatedRegion,
+		   CompRegion *expandedRegion,
+		   int offset,
+		   int borderLength,
+		   int axisLength,
+		   void (*expand)(const CompRegion &translatedRegion,
+			 	  CompRegion *expandedRegion,
+			 	  int borderPos,
+			 	  int borderLength,
+			 	  int expansionPos,
+			 	  int expansionSize))
+{
+    if (offset > 0)
+    {
+	(*expand) (translatedRegion, expandedRegion,
+	    offset,
+	    borderLength,
+	    0,
+	    offset);
+    }
+    else if (offset < 0)
+    {
+	(*expand) (translatedRegion, expandedRegion,
+	    axisLength - 1 + offset,
+	    borderLength,
+	    axisLength + offset,
+	    -offset);
+    }
+}
+
+static void
+computeCornerInfo (int offset, int axisLength, int *cornerPos,
+		   int *expansionPos, int *expansionSize)
+{
+    if (offset > 0)
+    {
+	*cornerPos = offset;
+	*expansionPos = 0;
+	*expansionSize = offset;
+    }
+    else
+    {
+	*cornerPos = axisLength - 1 + offset;
+	*expansionPos = axisLength + offset;
+	*expansionSize = -offset;
+    }
+}
+
 void
 PixelOrbiterScreen::damageRegion (const CompRegion &region)
 {
-    CompRegion r (region);
-    r.translate (offsetX, offsetY);
+    // Translate by the offset.
+    CompRegion translatedRegion (region);
+    translatedRegion.translate (offsetX, offsetY);
+    translatedRegion &= screen->region ();
 
-    if (offsetX > 0)
-    {
-	CompRegion leftBorder (r & CompRect(
-	    offsetX, offsetY, 1, screen->height ()));
-	foreach (CompRect rect, leftBorder.rects ())
-	{
-	    rect.setX (0);
-	    rect.setWidth (offsetX);
-	    r |= rect;
-	}
-    }
-    else if (offsetX < 0)
-    {
-	CompRegion rightBorder (r & CompRect(
-	    screen->width () - 1 + offsetX, offsetY, 1, screen->height ()));
-	foreach (CompRect rect, rightBorder.rects ())
-	{
-	    rect.setX (screen->width () + offsetX);
-	    rect.setWidth (-offsetX);
-	    r |= rect;
-	}
-    }
+    // Expand the region to include areas at the borders or corners that will
+    // also be modified due to texture coordinate clamping. 
+    CompRegion expandedRegion (translatedRegion);
 
-    if (offsetY > 0)
+    // Expand the damage on the visible horizontally-shifted vertical border, if
+    // any.
+    expandBorderDamage (translatedRegion, &expandedRegion, offsetX,
+	screen->height (), screen->width (), &expandVertBorderDamage);
+    // Expand the damage on the visible vertically-shifted horizontal border, if
+    // any.
+    expandBorderDamage (translatedRegion, &expandedRegion, offsetY,
+	screen->width (), screen->height (), &expandHorizBorderDamage);
+
+    // Expand the damage on the visible horizontally- and vertically-shifted
+    // corner, if any.
+    if (offsetX != 0 && offsetY != 0)
     {
-	CompRegion topBorder (r & CompRect(
-	    offsetX, offsetY, screen->width (), 1));
-	foreach (CompRect rect, topBorder.rects ())
+	int cornerX;
+	int expansionX;
+	int expansionWidth;
+	computeCornerInfo (offsetX, screen->width (), &cornerX, &expansionX,
+	    &expansionWidth);
+
+	int cornerY;
+	int expansionY;
+	int expansionHeight;
+	computeCornerInfo (offsetY, screen->height (), &cornerY, &expansionY,
+	    &expansionHeight);
+
+	if (translatedRegion.contains (CompPoint (cornerX, cornerY)))
 	{
-	    rect.setY (0);
-	    rect.setHeight (offsetY);
-	    r |= rect;
-	}
-    }
-    else if (offsetY < 0)
-    {
-	CompRegion bottomBorder (r & CompRect(
-	    offsetX, screen->height () - 1 + offsetY, screen->width (), 1));
-	foreach (CompRect rect, bottomBorder.rects ())
-	{
-	    rect.setY (screen->height () + offsetY);
-	    rect.setHeight (-offsetY);
-	    r |= rect;
+	    expandedRegion += CompRect (expansionX, expansionY, expansionWidth,
+		expansionHeight);
 	}
     }
 
-    if (offsetX > 0 && offsetY > 0 && r.contains (CompPoint (
-	offsetX, offsetY)))
-    {
-	// Top-left corner.
-	r |= CompRect (0, 0, offsetX, offsetY);
-    }
-
-    if (offsetX > 0 && offsetY < 0 && r.contains (CompPoint (
-	offsetX, screen->height () - 1 + offsetY)))
-    {
-	// Bottom-left corner.
-	r |= CompRect (0, screen->height () + offsetY, offsetX, -offsetY);
-    }
-
-    if (offsetX < 0 && offsetY > 0 && r.contains (CompPoint (
-	screen->width () - 1 + offsetX, offsetY)))
-    {
-	// Top-right corner.
-	r |= CompRect (screen->width () + offsetX, 0,
-	    -offsetX, offsetY);
-    }
-
-    if (offsetX < 0 && offsetY < 0 && r.contains (CompPoint (
-	screen->width () - 1 + offsetX, screen->height () - 1 + offsetY)))
-    {
-	// Bottom-right corner.
-	r |= CompRect (screen->width () + offsetX, screen->height () + offsetY,
-	    -offsetX, -offsetY);
-    }
-
-    r &= screen->region ();
-    cScreen->damageRegion (r);
+    cScreen->damageRegion (expandedRegion);
 }
 
 static void rectToPoints(const CompRect &quad, CompPoint points[4])
@@ -349,11 +395,11 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
 	glBegin (GL_QUADS);
 	emitTexturedQuad (
 	    CompRect (
-		cursorPosX + offsetX - cursorHotX,
-		cursorPosY + offsetY - cursorHotY,
-		cursorWidth,
-		cursorHeight),
-	    CompRect (0, 0, cursorWidth, cursorHeight));
+		cursorPos.x () + offsetX - cursorHotSpot.x (),
+		cursorPos.y () + offsetY - cursorHotSpot.y (),
+		cursorSize.width (),
+		cursorSize.height ()),
+	    CompRect (0, 0, cursorSize.width (), cursorSize.height ()));
 	glEnd ();
 	glDisable (GL_BLEND);
 	glBindTexture (GL_TEXTURE_RECTANGLE_ARB, 0);
@@ -381,16 +427,10 @@ PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
     canHideCursor (false),
     screenTexture (0),
     cursorTexture (0),
-    cursorWidth (0),
-    cursorHeight (0),
-    cursorHotX (0),
-    cursorHotY (0),
     haveCursor (false),
-    cursorPosX (0),
-    cursorPosY (0),
     phase (LEFT),
-    offsetX (10),
-    offsetY (10)
+    offsetX (30),
+    offsetY (30)
 {
     ScreenInterface::setHandler (screen, false);
     CompositeScreenInterface::setHandler (cScreen, false);
@@ -413,8 +453,7 @@ PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
     poller.setCallback (boost::bind (&PixelOrbiterScreen::positionUpdate, this,
 	_1));
     poller.start ();
-    cursorPosX = poller.getCurrentPosition ().x ();
-    cursorPosY = poller.getCurrentPosition ().y ();
+    cursorPos = poller.getCurrentPosition ();
 
     GLuint textures[2];
     glGenTextures (2, textures);

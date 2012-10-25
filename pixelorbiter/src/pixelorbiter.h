@@ -62,6 +62,10 @@ class PixelOrbiterScreen :
 	};
 
 	void
+	snapAxisOffsetToCursor (int *axisOffset, int axisSize,
+				int axisCursorPos);
+
+	void
 	positionUpdate (const CompPoint &pos);
 
 	void
@@ -88,14 +92,12 @@ class PixelOrbiterScreen :
 	GLuint cursorTexture;
 	GLenum target;
 
-	int cursorWidth;
-	int cursorHeight;
-	int cursorHotX;
-	int cursorHotY;
+	CompSize cursorSize;
+	// Cursor hot-spot point relative to cursor image origin.
+	CompPoint cursorHotSpot;
 	bool haveCursor;
 
-	int cursorPosX;
-	int cursorPosY;
+	CompPoint cursorPos;
 
 	CompTimer timer;
 	Phase phase;
