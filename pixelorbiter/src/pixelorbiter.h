@@ -88,6 +88,7 @@ class PixelOrbiterScreen :
 	int fixesEventBase;
 	bool canHideCursor;
 
+	GLuint screenFbo;
 	GLuint screenTexture;
 	GLuint cursorTexture;
 	GLenum target;

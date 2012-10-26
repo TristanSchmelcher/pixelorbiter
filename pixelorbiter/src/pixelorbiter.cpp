@@ -345,27 +345,32 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
     r.translate (-offsetX, -offsetY);
     r &= screen->region ();
 
-    bool status = gScreen->glPaintOutput (attrib, transform, r, output, mask);
+    GLint last_fbo = 0;
+    glGetIntegerv (GL_FRAMEBUFFER_BINDING, &last_fbo);
 
-    glEnable (GL_TEXTURE_RECTANGLE_ARB);
-    glBindTexture (GL_TEXTURE_RECTANGLE_ARB, screenTexture);
+    (*GL::bindFramebuffer) (GL_FRAMEBUFFER_EXT, screenFbo);
+
     if (screen->width () != lastWidth || screen->height () != lastHeight)
     {
-	glCopyTexImage2D (GL_TEXTURE_RECTANGLE_ARB, 0, GL_RGB, 0, 0,
-	    screen->width (), screen->height (), 0);
+	glBindTexture (GL_TEXTURE_RECTANGLE_ARB, screenTexture);
+	glTexImage2D (GL_TEXTURE_RECTANGLE_ARB, 0, GL_RGB, screen->width (),
+	    screen->height (), 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	(*GL::framebufferTexture2D) (GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT,
+	    GL_TEXTURE_RECTANGLE_ARB, screenTexture, 0);
+	GLenum status = (*GL::checkFramebufferStatus) (GL_FRAMEBUFFER_EXT);
+	if (status != GL_FRAMEBUFFER_COMPLETE_EXT)
+	{
+	    compLogMessage ("pixelorbiter", CompLogLevelError, "FBO incomplete! status = %d",
+		status);
+	}
+	glBindTexture (GL_TEXTURE_RECTANGLE_ARB, 0);
 	lastWidth = screen->width ();
 	lastHeight = screen->height ();
     }
-    else
-    {
-	foreach (CompRect rect, r.rects ())
-	{
-	    glCopyTexSubImage2D (GL_TEXTURE_RECTANGLE_ARB, 0,
-		rect.x (), screen->height () - rect.y2 (),
-		rect.x (), screen->height () - rect.y2 (),
-		rect.width (), rect.height ());
-	}
-    }
+
+    bool status = gScreen->glPaintOutput (attrib, transform, r, output, mask);
+
+    (*GL::bindFramebuffer) (GL_FRAMEBUFFER_EXT, last_fbo);
 
     GLMatrix sTransform = transform;
     sTransform.toScreenSpace (output, -DEFAULT_Z_CAMERA);
@@ -376,20 +381,17 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
     glBegin (GL_QUADS);
     foreach (CompRect rect, region.rects ())
     {
-	// GL puts the origin for glCopyTexImage2D at the bottom-left, so the
-	// texture Y-coordinates are inverted.
+	// GL puts the origin for the framebuffer texture at the bottom-left,
+	// so the texture Y-coordinates here are inverted.
 	emitTexturedQuad (rect, CompRect (
 	    -offsetX + rect.x (), screen->height () + offsetY - rect.y (),
 	    rect.width (), -rect.height ()));
     }
     glEnd ();
-    glBindTexture (GL_TEXTURE_RECTANGLE_ARB, 0);
-    glDisable (GL_TEXTURE_RECTANGLE_ARB);
 
     if (haveCursor)
     {
 	// Draw the cursor.
-	glEnable (GL_TEXTURE_RECTANGLE_ARB);
 	glBindTexture (GL_TEXTURE_RECTANGLE_ARB, cursorTexture);
 	glEnable (GL_BLEND);
 	glBegin (GL_QUADS);
@@ -402,14 +404,14 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
 	    CompRect (0, 0, cursorSize.width (), cursorSize.height ()));
 	glEnd ();
 	glDisable (GL_BLEND);
-	glBindTexture (GL_TEXTURE_RECTANGLE_ARB, 0);
-	glDisable (GL_TEXTURE_RECTANGLE_ARB);
     }
     else
     {
 	compLogMessage ("pixelorbiter", CompLogLevelWarn, "No cursor to draw!");
     }
 
+    glBindTexture (GL_TEXTURE_RECTANGLE_ARB, 0);
+    glDisable (GL_TEXTURE_RECTANGLE_ARB);
     glPopMatrix ();
 
     return status;
@@ -425,6 +427,7 @@ PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
     fixesSupported (false),
     fixesEventBase (0),
     canHideCursor (false),
+    screenFbo (0),
     screenTexture (0),
     cursorTexture (0),
     haveCursor (false),
@@ -432,6 +435,13 @@ PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
     offsetX (30),
     offsetY (30)
 {
+    if (!GL::fboSupported)
+    {
+	compLogMessage ("pixelorbiter", CompLogLevelError, 
+	    "FBO support is required");
+	return;
+    }
+
     ScreenInterface::setHandler (screen, false);
     CompositeScreenInterface::setHandler (cScreen, false);
     GLScreenInterface::setHandler (gScreen, false);
@@ -455,18 +465,11 @@ PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
     poller.start ();
     cursorPos = poller.getCurrentPosition ();
 
+    (*GL::genFramebuffers) (1, &screenFbo);
     GLuint textures[2];
     glGenTextures (2, textures);
     screenTexture = textures[0];
     cursorTexture = textures[1];
-
-    glEnable (GL_TEXTURE_RECTANGLE_ARB);
-    glBindTexture (GL_TEXTURE_RECTANGLE_ARB, screenTexture);
-    // Default is linear filtering and clamp-to-edge, which is what we want.
-    glTexImage2D (GL_TEXTURE_RECTANGLE_ARB, 0, GL_RGB, 0, 0, 0,
-		  GL_RGB, GL_UNSIGNED_BYTE, NULL);
-    glBindTexture (GL_TEXTURE_RECTANGLE_ARB, 0);
-    glDisable (GL_TEXTURE_RECTANGLE_ARB);
 
     cScreen->damageScreen ();
     screen->handleEventSetEnabled (this, true);
@@ -482,12 +485,18 @@ PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
 
 PixelOrbiterScreen::~PixelOrbiterScreen ()
 {
+    if (!GL::fboSupported)
+    {
+	return;
+    }
+
     timer.stop ();
 
     GLuint textures[2];
     textures[0] = screenTexture;
     textures[1] = cursorTexture;
     glDeleteTextures (2, textures);
+    (*GL::deleteFramebuffers) (1, &screenFbo);
 
     poller.stop ();
 
