@@ -72,6 +72,8 @@ class PixelOrbiterScreen :
 
 	void expandDamage (CompRegion &region);
 
+	void intervalChanged ();
+
 	CompScreen *screen;
 	CompositeScreen *cScreen;
 	GLScreen *gScreen;

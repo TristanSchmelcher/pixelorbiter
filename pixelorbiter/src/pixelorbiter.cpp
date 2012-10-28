@@ -26,10 +26,6 @@
 
 COMPIZ_PLUGIN_20090315 (pixelorbiter, PixelOrbiterPluginVTable);
 
-// TODO: Use options.
-#define TIMEOUT 60000
-#define MAX_OFFSET 10
-
 void
 PixelOrbiterScreen::snapAxisOffsetToCursor (int *axisOffset, int axisSize,
 					    int axisCursorPos)
@@ -45,7 +41,6 @@ PixelOrbiterScreen::snapAxisOffsetToCursor (int *axisOffset, int axisSize,
 	cScreen->damageScreen ();
     }
 }
-
 
 void
 PixelOrbiterScreen::positionUpdate (const CompPoint &pos)
@@ -79,6 +74,7 @@ PixelOrbiterScreen::damageCursor ()
 bool
 PixelOrbiterScreen::orbit ()
 {
+    int maxOffset = optionGetMaxOffset ();
     int *offset;
     switch (phase) {
 	case LEFT:
@@ -97,12 +93,12 @@ PixelOrbiterScreen::orbit ()
 	case DOWN:
 	case RIGHT:
 	    (*offset)++;
-	    phaseDone = *offset >= MAX_OFFSET;
+	    phaseDone = *offset >= maxOffset;
 	    break;
 	case UP:
 	case LEFT:
 	    (*offset)--;
-	    phaseDone = *offset <= -MAX_OFFSET;
+	    phaseDone = *offset <= -maxOffset;
 	    break;
 	default:
 	    assert (false);
@@ -428,6 +424,13 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
     return status;
 }
 
+void
+PixelOrbiterScreen::intervalChanged ()
+{
+    int interval = optionGetInterval ();
+    timer.setTimes (interval, interval * 1.5);
+}
+
 PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
     PluginClassHandler <PixelOrbiterScreen, CompScreen> (s),
     screen (s),
@@ -445,8 +448,8 @@ PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
     haveCursor (false),
     inDamageCursor (false),
     phase (LEFT),
-    offsetX (MAX_OFFSET),
-    offsetY (MAX_OFFSET)
+    offsetX (0),
+    offsetY (0)
 {
     if (!GL::fboSupported)
     {
@@ -484,14 +487,16 @@ PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
     screenTexture = textures[0];
     cursorTexture = textures[1];
 
-    cScreen->damageScreen ();
     screen->handleEventSetEnabled (this, true);
     gScreen->glPaintOutputSetEnabled (this, true);
     tScreen->transformDamageSetEnabled (this, true);
 
     loadCursor ();
 
-    timer.setTimes (TIMEOUT, TIMEOUT * 1.5);
+    optionSetIntervalNotify (boost::bind (&PixelOrbiterScreen::intervalChanged,
+	this));
+
+    intervalChanged ();
     timer.setCallback (boost::bind (&PixelOrbiterScreen::orbit, this));
     timer.start ();
 }

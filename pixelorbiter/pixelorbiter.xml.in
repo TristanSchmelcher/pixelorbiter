@@ -30,11 +30,18 @@
 			<group>
 				<_short>General</_short>
 				<option name="interval" type="int">
-					<_short>Pixel movement interval</_short>
+					<_short>Pixel shift interval</_short>
 					<_long>The interval (in ms) between one pixel shift and the next.</_long>
 					<default>60000</default>
 					<min>100</min>
 					<max>600000</max>
+				</option>
+				<option name="max_offset" type="int">
+					<_short>Maximum pixel shift</_short>
+					<_long>The maximum number of pixels by which the screen will be shifted from its normal position.</_long>
+					<default>10</default>
+					<min>1</min>
+					<max>9999</max>
 				</option>
 			</group>
 		</options>
