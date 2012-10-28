@@ -28,7 +28,7 @@ COMPIZ_PLUGIN_20090315 (pixelorbiter, PixelOrbiterPluginVTable);
 
 // TODO: Use options.
 #define TIMEOUT 60000
-#define MAX_OFFSET 30
+#define MAX_OFFSET 10
 
 void
 PixelOrbiterScreen::snapAxisOffsetToCursor (int *axisOffset, int axisSize,
@@ -66,13 +66,14 @@ PixelOrbiterScreen::damageCursor ()
 	return;
     }
 
-    cScreen->damageRegionSetEnabled (this, false);
+    assert (!inDamageCursor);
+    inDamageCursor = true;
     cScreen->damageRegion (CompRect (
-	cursorPos.x () + offsetX - cursorHotSpot.x (),
-	cursorPos.y () + offsetY - cursorHotSpot.y (),
+	cursorPos.x () - cursorHotSpot.x (),
+	cursorPos.y () - cursorHotSpot.y (),
 	cursorSize.width (),
 	cursorSize.height ()));
-    cScreen->damageRegionSetEnabled (this, true);
+    inDamageCursor = false;
 }
 
 bool
@@ -182,49 +183,49 @@ PixelOrbiterScreen::handleEvent (XEvent *event)
 }
 
 static void
-expandVertBorderDamage (const CompRegion &translatedRegion,
-			CompRegion *expandedRegion,
+expandVertBorderDamage (const CompRegion &origRegion,
+			CompRegion &region,
 			int borderX,
 			int borderHeight,
 			int expansionX,
 			int expansionWidth)
 {
-    CompRegion border (translatedRegion & CompRect(
+    CompRegion border (origRegion & CompRect(
 	borderX, 0, 1, borderHeight));
     foreach (CompRect rect, border.rects ())
     {
 	rect.setX (expansionX);
 	rect.setWidth (expansionWidth);
-	*expandedRegion += rect;
+	region += rect;
     }
 }
 
 static void
-expandHorizBorderDamage (const CompRegion &translatedRegion,
-			 CompRegion *expandedRegion,
+expandHorizBorderDamage (const CompRegion &origRegion,
+			 CompRegion &region,
 			 int borderY,
 			 int borderWidth,
 			 int expansionY,
 			 int expansionHeight)
 {
-    CompRegion border (translatedRegion & CompRect(
+    CompRegion border (origRegion & CompRect(
 	0, borderY, borderWidth, 1));
     foreach (CompRect rect, border.rects ())
     {
 	rect.setY (expansionY);
 	rect.setHeight (expansionHeight);
-	*expandedRegion += rect;
+	region += rect;
     }
 }
 
 static void
-expandBorderDamage(const CompRegion &translatedRegion,
-		   CompRegion *expandedRegion,
+expandBorderDamage(const CompRegion &origRegion,
+		   CompRegion &region,
 		   int offset,
 		   int borderLength,
 		   int axisLength,
-		   void (*expand)(const CompRegion &translatedRegion,
-			 	  CompRegion *expandedRegion,
+		   void (*expand)(const CompRegion &origRegion,
+			 	  CompRegion &region,
 			 	  int borderPos,
 			 	  int borderLength,
 			 	  int expansionPos,
@@ -232,7 +233,7 @@ expandBorderDamage(const CompRegion &translatedRegion,
 {
     if (offset > 0)
     {
-	(*expand) (translatedRegion, expandedRegion,
+	(*expand) (origRegion, region,
 	    offset,
 	    borderLength,
 	    0,
@@ -240,7 +241,7 @@ expandBorderDamage(const CompRegion &translatedRegion,
     }
     else if (offset < 0)
     {
-	(*expand) (translatedRegion, expandedRegion,
+	(*expand) (origRegion, region,
 	    axisLength - 1 + offset,
 	    borderLength,
 	    axisLength + offset,
@@ -267,25 +268,19 @@ computeCornerInfo (int offset, int axisLength, int *cornerPos,
 }
 
 void
-PixelOrbiterScreen::damageRegion (const CompRegion &region)
+PixelOrbiterScreen::expandDamage (CompRegion &region)
 {
-    // Translate by the offset.
-    CompRegion translatedRegion (region);
-    translatedRegion.translate (offsetX, offsetY);
-    translatedRegion &= screen->region ();
-
-    // Expand the region to include areas at the borders or corners that will
-    // also be modified due to texture coordinate clamping. 
-    CompRegion expandedRegion (translatedRegion);
+    // Backup the translated region.
+    CompRegion origRegion (region);
 
     // Expand the damage on the visible horizontally-shifted vertical border, if
     // any.
-    expandBorderDamage (translatedRegion, &expandedRegion, offsetX,
-	screen->height (), screen->width (), &expandVertBorderDamage);
+    expandBorderDamage (origRegion, region, offsetX, screen->height (),
+	screen->width (), &expandVertBorderDamage);
     // Expand the damage on the visible vertically-shifted horizontal border, if
     // any.
-    expandBorderDamage (translatedRegion, &expandedRegion, offsetY,
-	screen->width (), screen->height (), &expandHorizBorderDamage);
+    expandBorderDamage (origRegion, region, offsetY, screen->width (),
+	screen->height (), &expandHorizBorderDamage);
 
     // Expand the damage on the visible horizontally- and vertically-shifted
     // corner, if any.
@@ -303,14 +298,30 @@ PixelOrbiterScreen::damageRegion (const CompRegion &region)
 	computeCornerInfo (offsetY, screen->height (), &cornerY, &expansionY,
 	    &expansionHeight);
 
-	if (translatedRegion.contains (CompPoint (cornerX, cornerY)))
+	if (origRegion.contains (CompPoint (cornerX, cornerY)))
 	{
-	    expandedRegion += CompRect (expansionX, expansionY, expansionWidth,
+	    region += CompRect (expansionX, expansionY, expansionWidth,
 		expansionHeight);
 	}
     }
+}
 
-    cScreen->damageRegion (expandedRegion);
+void
+PixelOrbiterScreen::transformDamage (CompRegion &region)
+{
+    // Translate by the offset.
+    region.translate (offsetX, offsetY);
+    region &= screen->region ();
+
+    // Since the cursor is drawn post-FBO, there is no texture coordinate
+    // clamping going on, so no damage expansion.
+    if (!inDamageCursor) {
+	// Expand the region to include areas at the borders or corners that will
+	// also be modified due to texture coordinate clamping. 
+	expandDamage (region);
+    }
+
+    tScreen->transformDamage (region);
 }
 
 static void rectToPoints(const CompRect &quad, CompPoint points[4])
@@ -422,6 +433,7 @@ PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
     screen (s),
     cScreen (CompositeScreen::get (screen)),
     gScreen (GLScreen::get (screen)),
+    tScreen (TransformDamageScreen::get (screen)),
     lastWidth (0),
     lastHeight (0),
     fixesSupported (false),
@@ -431,9 +443,10 @@ PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
     screenTexture (0),
     cursorTexture (0),
     haveCursor (false),
+    inDamageCursor (false),
     phase (LEFT),
-    offsetX (30),
-    offsetY (30)
+    offsetX (MAX_OFFSET),
+    offsetY (MAX_OFFSET)
 {
     if (!GL::fboSupported)
     {
@@ -443,8 +456,8 @@ PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
     }
 
     ScreenInterface::setHandler (screen, false);
-    CompositeScreenInterface::setHandler (cScreen, false);
     GLScreenInterface::setHandler (gScreen, false);
+    TransformDamageScreenInterface::setHandler (tScreen, false);
 
     int unused, major, minor;
     fixesSupported = XFixesQueryExtension(screen->dpy (), &fixesEventBase,
@@ -473,8 +486,8 @@ PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
 
     cScreen->damageScreen ();
     screen->handleEventSetEnabled (this, true);
-    cScreen->damageRegionSetEnabled (this, true);
     gScreen->glPaintOutputSetEnabled (this, true);
+    tScreen->transformDamageSetEnabled (this, true);
 
     loadCursor ();
 
@@ -508,7 +521,10 @@ PixelOrbiterScreen::~PixelOrbiterScreen ()
 	XFixesSelectCursorInput (screen->dpy (), screen->root (), 0);
     }
 
-    cScreen->damageScreen ();
+    if (offsetX != 0 || offsetY != 0)
+    {
+	cScreen->damageScreen ();
+    }
 }
 
 bool
@@ -517,7 +533,9 @@ PixelOrbiterPluginVTable::init ()
     if (!CompPlugin::checkPluginABI ("core", CORE_ABIVERSION) ||
 	!CompPlugin::checkPluginABI ("composite", COMPIZ_COMPOSITE_ABI) ||
 	!CompPlugin::checkPluginABI ("opengl", COMPIZ_OPENGL_ABI) ||
-	!CompPlugin::checkPluginABI ("mousepoll", COMPIZ_MOUSEPOLL_ABI))
+	!CompPlugin::checkPluginABI ("mousepoll", COMPIZ_MOUSEPOLL_ABI) ||
+	!CompPlugin::checkPluginABI ("transformdamage",
+	    COMPIZ_TRANSFORMDAMAGE_ABI))
 	return false;
 
     return true;

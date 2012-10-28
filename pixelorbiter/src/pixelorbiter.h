@@ -25,6 +25,7 @@
 #include <core/timer.h>
 #include <mousepoll/mousepoll.h>
 #include <opengl/opengl.h>
+#include <transformdamage/transformdamage.h>
 
 #include "pixelorbiter_options.h"
 
@@ -32,25 +33,22 @@ class PixelOrbiterScreen :
     public PluginClassHandler <PixelOrbiterScreen, CompScreen>,
     public PixelorbiterOptions,
     public ScreenInterface,
-    public CompositeScreenInterface,
-    public GLScreenInterface
+    public GLScreenInterface,
+    public TransformDamageScreenInterface
 {
     public:
 	PixelOrbiterScreen (CompScreen *screen);
 	~PixelOrbiterScreen ();
 
-	void
-	handleEvent (XEvent *event);
+	void handleEvent (XEvent *event);
 
-	void
-	damageRegion (const CompRegion &r);
+	void transformDamage (CompRegion &region);
 
-	bool
-	glPaintOutput (const GLScreenPaintAttrib &attrib,
-		       const GLMatrix	         &transform,
-		       const CompRegion	         &region,
-		       CompOutput	         *output,
-		       unsigned int              mask);
+	bool glPaintOutput (const GLScreenPaintAttrib &attrib,
+			    const GLMatrix	      &transform,
+			    const CompRegion	      &region,
+			    CompOutput		      *output,
+			    unsigned int	      mask);
 
     private:
 	enum Phase {
@@ -61,25 +59,23 @@ class PixelOrbiterScreen :
 	    NUM_PHASES
 	};
 
-	void
-	snapAxisOffsetToCursor (int *axisOffset, int axisSize,
-				int axisCursorPos);
+	void snapAxisOffsetToCursor (int *axisOffset, int axisSize,
+				     int axisCursorPos);
 
-	void
-	positionUpdate (const CompPoint &pos);
+	void positionUpdate (const CompPoint &pos);
 
-	void
-	damageCursor ();
+	void damageCursor ();
 
-	bool
-	orbit ();
+	bool orbit ();
 
-	void
-	loadCursor ();
+	void loadCursor ();
+
+	void expandDamage (CompRegion &region);
 
 	CompScreen *screen;
 	CompositeScreen *cScreen;
 	GLScreen *gScreen;
+	TransformDamageScreen *tScreen;
 
 	int lastWidth;
 	int lastHeight;
@@ -91,12 +87,12 @@ class PixelOrbiterScreen :
 	GLuint screenFbo;
 	GLuint screenTexture;
 	GLuint cursorTexture;
-	GLenum target;
 
 	CompSize cursorSize;
 	// Cursor hot-spot point relative to cursor image origin.
 	CompPoint cursorHotSpot;
 	bool haveCursor;
+	bool inDamageCursor;
 
 	CompPoint cursorPos;
 

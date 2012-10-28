@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<compiz>
+	<plugin name="transformdamage" useBcop="true">
+		<_short>Transform Damage</_short>
+		<_long>Transform Damage</_long>
+		<category>Utility</category>
+		<deps>
+			<relation type="before">
+				<plugin>unityshell</plugin>
+			</relation>
+			<requirement>
+				<plugin>composite</plugin>
+			</requirement>
+		</deps>
+	</plugin>
+</compiz>

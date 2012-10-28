@@ -14,13 +14,16 @@
 				<plugin>opengl</plugin>
 				<plugin>mousepoll</plugin>
 				<plugin>rotate</plugin>
+				<plugin>transformdamage</plugin>
 				<plugin>unityshell</plugin>
 				<plugin>vpswitch</plugin>
 				<plugin>wall</plugin>
 			</relation>
 			<requirement>
+				<plugin>composite</plugin>
 				<plugin>opengl</plugin>
 				<plugin>mousepoll</plugin>
+				<plugin>transformdamage</plugin>
 			</requirement>
 		</deps>
 		<options>
