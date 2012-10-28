@@ -523,6 +523,8 @@ PixelOrbiterScreen::~PixelOrbiterScreen ()
     }
 
     if (fixesSupported) {
+	// This can conflict with ezoom. The SelectCursorInput calls should be
+	// factored out into a utility plugin.
 	XFixesSelectCursorInput (screen->dpy (), screen->root (), 0);
     }
 
