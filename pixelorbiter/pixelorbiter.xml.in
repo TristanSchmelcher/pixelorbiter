@@ -33,7 +33,7 @@
 					<_short>Pixel shift interval</_short>
 					<_long>The interval (in ms) between one pixel shift and the next.</_long>
 					<default>60000</default>
-					<min>100</min>
+					<min>10</min>
 					<max>600000</max>
 				</option>
 				<option name="max_offset" type="int">
@@ -41,6 +41,32 @@
 					<_long>The maximum number of pixels by which the screen will be shifted from its normal position.</_long>
 					<default>10</default>
 					<min>1</min>
+					<max>9999</max>
+				</option>
+				<option name="mouse_behaviour" type="int">
+					<_short>Mouse Out of Bounds Behaviour</_short>
+					<_long>The behaviour of the orbiter when the mouse is moved outside the bounds of the visible screen area.</_long>
+					<default>0</default>
+					<min>0</min>
+					<max>2</max>
+					<desc>
+						<value>0</value>
+						<_name>Bounce</_name>
+					</desc>
+					<desc>
+						<value>1</value>
+						<_name>Pan</_name>
+					</desc>
+					<desc>
+						<value>2</value>
+						<_name>None</_name>
+					</desc>
+				</option>
+				<option name="mouse_margin" type="int">
+					<_short>Mouse Out of Bounds Margin Size</_short>
+					<_long>The size (in pixels) of the margins at the edges of the screen within which the mouse out of bounds behaviour will take effect.</_long>
+					<default>10</default>
+					<min>-9999</min>
 					<max>9999</max>
 				</option>
 			</group>

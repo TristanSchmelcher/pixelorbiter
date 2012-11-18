@@ -51,7 +51,8 @@ class PixelOrbiterScreen :
 			    unsigned int	      mask);
 
     private:
-	enum Phase {
+	enum Phase
+	{
 	    LEFT,
 	    UP,
 	    RIGHT,
@@ -59,8 +60,30 @@ class PixelOrbiterScreen :
 	    NUM_PHASES
 	};
 
+	struct Offsets
+	{
+	    Offsets () : x(0), y(0) {}
+
+	    bool operator!= (const Offsets &that) const
+	    {
+		return x != that.x || y != that.y;
+	    }
+
+	    bool operator== (const Offsets &that) const
+	    {
+		return x == that.x && y == that.y;
+	    }
+
+	    int x;
+	    int y;
+	};
+
 	void snapAxisOffsetToCursor (int *axisOffset, int axisSize,
 				     int axisCursorPos);
+
+	bool updateOffsets (const Offsets &offsets);
+
+	bool snapOffsetsToCursor (Offsets *offsets);
 
 	void positionUpdate (const CompPoint &pos);
 
@@ -100,8 +123,8 @@ class PixelOrbiterScreen :
 
 	CompTimer timer;
 	Phase phase;
-	int offsetX;
-	int offsetY;
+	Offsets desiredOffsets;
+	Offsets currentOffsets;
 
 	MousePoller poller;
 };

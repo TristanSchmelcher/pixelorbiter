@@ -22,6 +22,7 @@
 
 #include "pixelorbiter.h"
 
+#include <algorithm>
 #include <cassert>
 
 COMPIZ_PLUGIN_20090315 (pixelorbiter, PixelOrbiterPluginVTable);
@@ -30,16 +31,38 @@ void
 PixelOrbiterScreen::snapAxisOffsetToCursor (int *axisOffset, int axisSize,
 					    int axisCursorPos)
 {
-    if (axisCursorPos < -(*axisOffset))
+    int margin = optionGetMouseMargin ();
+    int maxAxisPos = axisSize - 1;
+    int axisCursorPosNegativeMargin = std::max(axisCursorPos - margin, 0);
+    int axisCursorPosPositiveMargin = std::min(axisCursorPos + margin, maxAxisPos);
+    if (axisCursorPosNegativeMargin < -(*axisOffset))
     {
-	*axisOffset = -axisCursorPos;
-	cScreen->damageScreen ();
+	*axisOffset = -axisCursorPosNegativeMargin;
     }
-    else if (axisCursorPos > (axisSize - 1 - *axisOffset))
+    else if (axisCursorPosPositiveMargin > (maxAxisPos - *axisOffset))
     {
-	*axisOffset = axisSize - 1 - axisCursorPos;
-	cScreen->damageScreen ();
+	*axisOffset = maxAxisPos - axisCursorPosPositiveMargin;
     }
+}
+
+bool
+PixelOrbiterScreen::updateOffsets (const Offsets &offsets)
+{
+    if (currentOffsets == offsets)
+    {
+	return false;
+    }
+    currentOffsets = offsets;
+    cScreen->damageScreen ();
+    return true;
+}
+
+bool
+PixelOrbiterScreen::snapOffsetsToCursor (Offsets *offsets)
+{
+    snapAxisOffsetToCursor (&offsets->x, screen->width (), cursorPos.x ());
+    snapAxisOffsetToCursor (&offsets->y, screen->height (), cursorPos.y ());
+    return updateOffsets (*offsets);
 }
 
 void
@@ -49,8 +72,33 @@ PixelOrbiterScreen::positionUpdate (const CompPoint &pos)
     cursorPos = poller.getCurrentPosition ();
     damageCursor ();
 
-    snapAxisOffsetToCursor (&offsetX, screen->width (), cursorPos.x ());
-    snapAxisOffsetToCursor (&offsetY, screen->height (), cursorPos.y ());
+    switch (optionGetMouseBehaviour ())
+    {
+    case MouseBehaviourBounce:
+	{
+	    // Snap current offsets without changing desired offsets.
+	    Offsets newOffsets (desiredOffsets);
+	    if (snapOffsetsToCursor (&newOffsets))
+	    {
+		// Restart timer so that the snap back can't happen immediately.
+		timer.start ();
+	    }
+	    break;
+	}
+
+    case MouseBehaviourPan:
+	// Snap desired and current offsets. (In this mode, current always
+	// tracks desired.)
+	snapOffsetsToCursor (&desiredOffsets);
+	break;
+
+    case MouseBehaviourNone:
+	// Nothing to do.
+	break;
+
+    default:
+	assert (false);
+    }
 }
 
 void
@@ -75,15 +123,15 @@ bool
 PixelOrbiterScreen::orbit ()
 {
     int maxOffset = optionGetMaxOffset ();
-    int *offset;
+    int *desiredOffset;
     switch (phase) {
 	case LEFT:
 	case RIGHT:
-	    offset = &offsetX;
+	    desiredOffset = &desiredOffsets.x;
 	    break;
 	case UP:
 	case DOWN:
-	    offset = &offsetY;
+	    desiredOffset = &desiredOffsets.y;
 	    break;
 	default:
 	    assert (false);
@@ -92,13 +140,13 @@ PixelOrbiterScreen::orbit ()
     switch (phase) {
 	case DOWN:
 	case RIGHT:
-	    (*offset)++;
-	    phaseDone = *offset >= maxOffset;
+	    (*desiredOffset)++;
+	    phaseDone = *desiredOffset >= maxOffset;
 	    break;
 	case UP:
 	case LEFT:
-	    (*offset)--;
-	    phaseDone = *offset <= -maxOffset;
+	    (*desiredOffset)--;
+	    phaseDone = *desiredOffset <= -maxOffset;
 	    break;
 	default:
 	    assert (false);
@@ -107,7 +155,7 @@ PixelOrbiterScreen::orbit ()
     {
 	phase = static_cast<Phase>((phase + 1) % NUM_PHASES);
     }
-    cScreen->damageScreen ();
+    updateOffsets (desiredOffsets);
     return true;
 }
 
@@ -152,13 +200,11 @@ PixelOrbiterScreen::loadCursor ()
 
     XFree (image);
 
-    glEnable (GL_TEXTURE_RECTANGLE_ARB);
     glBindTexture (GL_TEXTURE_RECTANGLE_ARB, cursorTexture);
     // Default is linear filtering and clamp-to-edge, which is what we want.
     glTexImage2D (GL_TEXTURE_RECTANGLE_ARB, 0, GL_RGBA, cursorSize.width (),
 		  cursorSize.height (), 0, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
     glBindTexture (GL_TEXTURE_RECTANGLE_ARB, 0);
-    glDisable (GL_TEXTURE_RECTANGLE_ARB);
 
     delete [] pixels;
 
@@ -271,28 +317,28 @@ PixelOrbiterScreen::expandDamage (CompRegion &region)
 
     // Expand the damage on the visible horizontally-shifted vertical border, if
     // any.
-    expandBorderDamage (origRegion, region, offsetX, screen->height (),
+    expandBorderDamage (origRegion, region, currentOffsets.x, screen->height (),
 	screen->width (), &expandVertBorderDamage);
     // Expand the damage on the visible vertically-shifted horizontal border, if
     // any.
-    expandBorderDamage (origRegion, region, offsetY, screen->width (),
+    expandBorderDamage (origRegion, region, currentOffsets.y, screen->width (),
 	screen->height (), &expandHorizBorderDamage);
 
     // Expand the damage on the visible horizontally- and vertically-shifted
     // corner, if any.
-    if (offsetX != 0 && offsetY != 0)
+    if (currentOffsets.x != 0 && currentOffsets.y != 0)
     {
 	int cornerX;
 	int expansionX;
 	int expansionWidth;
-	computeCornerInfo (offsetX, screen->width (), &cornerX, &expansionX,
-	    &expansionWidth);
+	computeCornerInfo (currentOffsets.x, screen->width (), &cornerX,
+	    &expansionX, &expansionWidth);
 
 	int cornerY;
 	int expansionY;
 	int expansionHeight;
-	computeCornerInfo (offsetY, screen->height (), &cornerY, &expansionY,
-	    &expansionHeight);
+	computeCornerInfo (currentOffsets.y, screen->height (), &cornerY,
+	    &expansionY, &expansionHeight);
 
 	if (origRegion.contains (CompPoint (cornerX, cornerY)))
 	{
@@ -306,7 +352,7 @@ void
 PixelOrbiterScreen::transformDamage (CompRegion &region)
 {
     // Translate by the offset.
-    region.translate (offsetX, offsetY);
+    region.translate (currentOffsets.x, currentOffsets.y);
     region &= screen->region ();
 
     // Since the cursor is drawn post-FBO, there is no texture coordinate
@@ -349,7 +395,7 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
 				   unsigned int	             mask)
 {
     CompRegion r (region);
-    r.translate (-offsetX, -offsetY);
+    r.translate (-currentOffsets.x, -currentOffsets.y);
     r &= screen->region ();
 
     GLint last_fbo = 0;
@@ -391,8 +437,10 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
 	// GL puts the origin for the framebuffer texture at the bottom-left,
 	// so the texture Y-coordinates here are inverted.
 	emitTexturedQuad (rect, CompRect (
-	    -offsetX + rect.x (), screen->height () + offsetY - rect.y (),
-	    rect.width (), -rect.height ()));
+	    -currentOffsets.x + rect.x (),
+	    screen->height () + currentOffsets.y - rect.y (),
+	    rect.width (),
+	    -rect.height ()));
     }
     glEnd ();
 
@@ -404,8 +452,8 @@ PixelOrbiterScreen::glPaintOutput (const GLScreenPaintAttrib &attrib,
 	glBegin (GL_QUADS);
 	emitTexturedQuad (
 	    CompRect (
-		cursorPos.x () + offsetX - cursorHotSpot.x (),
-		cursorPos.y () + offsetY - cursorHotSpot.y (),
+		cursorPos.x () + currentOffsets.x - cursorHotSpot.x (),
+		cursorPos.y () + currentOffsets.y - cursorHotSpot.y (),
 		cursorSize.width (),
 		cursorSize.height ()),
 	    CompRect (0, 0, cursorSize.width (), cursorSize.height ()));
@@ -447,9 +495,7 @@ PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
     cursorTexture (0),
     haveCursor (false),
     inDamageCursor (false),
-    phase (LEFT),
-    offsetX (0),
-    offsetY (0)
+    phase (LEFT)
 {
     if (!GL::fboSupported)
     {
@@ -528,7 +574,7 @@ PixelOrbiterScreen::~PixelOrbiterScreen ()
 	XFixesSelectCursorInput (screen->dpy (), screen->root (), 0);
     }
 
-    if (offsetX != 0 || offsetY != 0)
+    if (currentOffsets.x != 0 || currentOffsets.y != 0)
     {
 	cScreen->damageScreen ();
     }
