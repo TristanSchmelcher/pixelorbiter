@@ -135,6 +135,7 @@ PixelOrbiterScreen::orbit ()
 	    break;
 	default:
 	    assert (false);
+	    return true;
     }
     bool phaseDone;
     switch (phase) {
@@ -150,6 +151,7 @@ PixelOrbiterScreen::orbit ()
 	    break;
 	default:
 	    assert (false);
+	    return true;
     }
     if (phaseDone)
     {
