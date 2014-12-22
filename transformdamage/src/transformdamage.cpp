@@ -23,7 +23,8 @@
 #include <transformdamage/transformdamage.h>
 
 class TransformDamagePluginVTable :
-    public CompPlugin::VTableForScreen <TransformDamageScreen>
+    public CompPlugin::VTableForScreen<TransformDamageScreen,
+	COMPIZ_TRANSFORMDAMAGE_ABI>
 {
     public:
 	bool init ();
@@ -32,9 +33,28 @@ class TransformDamagePluginVTable :
 
 COMPIZ_PLUGIN_20090315 (transformdamage, TransformDamagePluginVTable);
 
+template class WrapableInterface<TransformDamageScreen,
+    TransformDamageScreenInterface>;
+
 void
 TransformDamageScreenInterface::transformDamage (CompRegion &region)
     WRAPABLE_DEF (transformDamage, region)
+
+template class PluginClassHandler<TransformDamageScreen, CompScreen,
+    COMPIZ_TRANSFORMDAMAGE_ABI>;
+
+TransformDamageScreen::TransformDamageScreen (CompScreen *s) :
+    PluginClassHandler<TransformDamageScreen, CompScreen,
+	COMPIZ_TRANSFORMDAMAGE_ABI> (s),
+    cScreen (CompositeScreen::get (screen))
+{
+    CompositeScreenInterface::setHandler (cScreen, false);
+    cScreen->damageRegionSetEnabled (this, true);
+}
+
+TransformDamageScreen::~TransformDamageScreen ()
+{
+}
 
 void
 TransformDamageScreen::damageRegion (const CompRegion &region)
@@ -48,19 +68,6 @@ void
 TransformDamageScreen::transformDamage (CompRegion &region)
 {
     WRAPABLE_HND_FUNCTN (transformDamage, region);
-}
-
-TransformDamageScreen::TransformDamageScreen (CompScreen *s) :
-    PluginClassHandler <TransformDamageScreen, CompScreen,
-	COMPIZ_TRANSFORMDAMAGE_ABI> (s),
-    cScreen (CompositeScreen::get (screen))
-{
-    CompositeScreenInterface::setHandler (cScreen, false);
-    cScreen->damageRegionSetEnabled (this, true);
-}
-
-TransformDamageScreen::~TransformDamageScreen ()
-{
 }
 
 bool

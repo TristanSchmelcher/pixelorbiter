@@ -31,6 +31,10 @@
 #include <core/wrapsystem.h>
 
 class TransformDamageScreen;
+class TransformDamageScreenInterface;
+
+extern template class WrapableInterface<TransformDamageScreen,
+    TransformDamageScreenInterface>;
 
 class TransformDamageScreenInterface : public WrapableInterface<
     TransformDamageScreen, TransformDamageScreenInterface>
@@ -45,9 +49,12 @@ class TransformDamageScreenInterface : public WrapableInterface<
 	virtual void transformDamage (CompRegion &region);
 };
 
+extern template class PluginClassHandler<TransformDamageScreen, CompScreen,
+	COMPIZ_TRANSFORMDAMAGE_ABI>;
+
 class TransformDamageScreen :
-    public WrapableHandler <TransformDamageScreenInterface, 1>,
-    public PluginClassHandler <TransformDamageScreen, CompScreen,
+    public WrapableHandler<TransformDamageScreenInterface, 1>,
+    public PluginClassHandler<TransformDamageScreen, CompScreen,
 	COMPIZ_TRANSFORMDAMAGE_ABI>,
     public CompositeScreenInterface
 {

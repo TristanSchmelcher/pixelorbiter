@@ -482,7 +482,7 @@ PixelOrbiterScreen::intervalChanged ()
 }
 
 PixelOrbiterScreen::PixelOrbiterScreen (CompScreen *s) :
-    PluginClassHandler <PixelOrbiterScreen, CompScreen> (s),
+    PluginClassHandler<PixelOrbiterScreen, CompScreen> (s),
     screen (s),
     cScreen (CompositeScreen::get (screen)),
     gScreen (GLScreen::get (screen)),
